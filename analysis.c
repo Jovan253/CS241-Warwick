@@ -8,8 +8,13 @@
 #include <string.h>
 #include <stdlib.h>
 #include <signal.h>
+#include <pthread.h>
 /* ethernet headers always 14 bytes*/
 #define SIZE_ETHERNET 14
+pthread_mutex_t synLock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t blacklistLock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t arpLock = PTHREAD_MUTEX_INITIALIZER;
+
 
 int synCounter = 0;
 int arpCounter = 0;
@@ -22,38 +27,49 @@ int *arr = NULL;
 int numDistinct = 0;
 
 void synFloodAttack(const struct iphdr *ip_head, const struct tcphdr *tcp_head){
-  if (tcp_head->syn == 1){ /* filter by SYN packets set*/
+  if (tcp_head->syn == 1 && tcp_head->ack==0){ /* filter by SYN packets set*/
+    pthread_mutex_lock(&synLock);
     synCounter++;    
     count++;
     arr = (int *) realloc(arr, count*sizeof(int));    
     arr[count-1] = ip_head->saddr;
+    pthread_mutex_unlock(&synLock);
   }
 }
 
-void arpPoison(const struct ether_arp *arp){  
-  arpCounter++;  
-}
-
-void blacklistedURLs(const struct tcphdr *tcp_head, const char *payload){
-  if (ntohs(tcp_head->dest) == 80){
-    // printf("\nBlacklisted URL violation detected");
-    // printf("\nSource IP address: %d", tcp_head->src);
+void blacklistedURLs(const struct tcphdr *tcp_head, const char *payload, const struct iphdr *ip_head){
+  if (ntohs(tcp_head->dest) == 80){    
     if (strstr(payload, "Host: www.google.co.uk")){      
+      pthread_mutex_lock(&blacklistLock);
+      printf("\nBlacklisted URL violation detected");
+      struct in_addr ipaddr;
+      ipaddr.s_addr = ip_head->saddr;      
+      printf("\nSource IP address: %s", inet_ntoa(ipaddr));      
+      ipaddr.s_addr = ip_head->daddr;
+      printf("\nDestination IP address: %s\n", inet_ntoa(ipaddr));
       blacklistViolations++;
       googleViolations++;      
+      pthread_mutex_unlock(&blacklistLock);
     }
     else if (strstr(payload, "Host: www.facebook.com"))
     {      
+      pthread_mutex_lock(&blacklistLock);
+      printf("\nBlacklisted URL violation detected");
+      struct in_addr ipaddr;
+      ipaddr.s_addr = ip_head->saddr;      
+      printf("\nSource IP address: %s", inet_ntoa(ipaddr));
+      ipaddr.s_addr = ip_head->daddr;
+      printf("\nDestination IP address: %s\n", inet_ntoa(ipaddr));
       blacklistViolations++;
       facebookViolations++;
-    }
-    
+      pthread_mutex_unlock(&blacklistLock);
+    }    
   }
 }
 
 
 void detectionReport(int signo){
-  if (signo == SIGINT){    
+  if (signo == SIGINT){         
     int j;
     for (int i = 0; i < count; i++){
       for (j = 0; j < i; j++){
@@ -70,14 +86,16 @@ void detectionReport(int signo){
     printf("\n%d SYN packets detected from %d different IPs (syn attack)", synCounter, numDistinct);
     printf("\n%d ARP responses (cache poisoning)", arpCounter);
     printf("\n%d URL Blacklist violations (%d google and %d facebook)\n", blacklistViolations, googleViolations, facebookViolations);  
-    exit(0);  
+    pthread_mutex_destroy(&arpLock);
+    pthread_mutex_destroy(&synLock);
+    pthread_mutex_destroy(&blacklistLock);    
+    exit(0); // stops infiinte run of program 
   }
 
 
 }
 
-void analyse(struct pcap_pkthdr *header, const unsigned char *packet, int verbose) {
-  signal(SIGINT, detectionReport);
+void analyse(struct pcap_pkthdr *header, const unsigned char *packet, int verbose) {  
 
   const struct ether_header *ethernet = (struct ether_header*)(packet); /* The ethernet header with pointer set to start of packet */
   const struct iphdr *ip = (struct iphdr*)(packet + ETH_HLEN); /* The IP header */
@@ -90,10 +108,16 @@ void analyse(struct pcap_pkthdr *header, const unsigned char *packet, int verbos
 
   if (ntohs(ethernet->ether_type) == ETHERTYPE_IP){
     synFloodAttack(ip, tcp);
-    blacklistedURLs(tcp, payload);
+    blacklistedURLs(tcp, payload, ip);
   }
   else if (ntohs(ethernet->ether_type) == ETHERTYPE_ARP){
-    const struct ether_arp *arp = (struct ether_arp *)(ip);
-    arpPoison(arp);
-  }        
+    const struct ether_arp *arp = (struct ether_arp *)(ip);   
+    if (ntohs(arp->arp_op) == ARPOP_REPLY){
+      pthread_mutex_lock(&arpLock);
+      arpCounter++;
+      pthread_mutex_unlock(&arpLock);
+    }       
+  }   
+
+  signal(SIGINT, detectionReport);     
 }

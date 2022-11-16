@@ -8,9 +8,14 @@
 #include "dispatch.h"
 
 
-void callback(unsigned char *confs, const struct pcap_pkthdr *header, const unsigned char *packet){
+void callback(unsigned char *args, const struct pcap_pkthdr *header, const unsigned char *packet){
   // Dispatch packet for processing
-  dispatch(header, packet, confs[0]->verbose);
+  int verbose = (int) *args;
+  if (verbose){
+    dump(packet, header->len);
+  }  
+  dispatch((struct pcap_pkthdr *)header, packet, verbose);
+  
 }
 
 // Application main sniffing loop
@@ -26,24 +31,13 @@ void sniff(char *interface, int verbose) {
     exit(EXIT_FAILURE);
   } else {
     printf("SUCCESS! Opened %s for capture\n", interface);
-  }
-  
-
-  typedef struct _configuration Configuration;
-  struct _configuration {
-    int verbose;    
-  };
-
-  /* init. of the structure: */
-  Configuration conf[1] = {
-    {verbose}    
-  };
+  }  
 
    // negative = sniff till error
   // first arg = pcap handle
   // third = call back function 
   // 4 = verbose decides the dispatch process so this is the argument we want to pass in
-  pcap_loop(pcap_handle, -1, callback, (u_char *) &conf);
+  pcap_loop(pcap_handle, -1, callback, (u_char *) &verbose);
 
   // struct pcap_pkthdr header;
   // const unsigned char *packet;
