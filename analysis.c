@@ -26,40 +26,55 @@ int count = 0;
 int *arr = NULL;
 int numDistinct = 0;
 
+// Detecting Syn Flood Attacks
 void synFloodAttack(const struct iphdr *ip_head, const struct tcphdr *tcp_head){
-  if (tcp_head->syn == 1 && tcp_head->ack==0){ /* filter by SYN packets set*/
+  // Filter by SYN packets set
+  if (tcp_head->syn == 1 && tcp_head->ack==0){ 
     pthread_mutex_lock(&synLock);
     synCounter++;    
     count++;
+    // Add the address of the ip to an array
     arr = (int *) realloc(arr, count*sizeof(int));    
     arr[count-1] = ip_head->saddr;
     pthread_mutex_unlock(&synLock);
   }
 }
 
+// Detecting blacklisted URLs
 void blacklistedURLs(const struct tcphdr *tcp_head, const char *payload, const struct iphdr *ip_head){
+  // Checking that it comes in on port 80
   if (ntohs(tcp_head->dest) == 80){    
+    // if the payload is google address display appropriate messages
     if (strstr(payload, "Host: www.google.co.uk")){      
       pthread_mutex_lock(&blacklistLock);
+      printf("\n========================");
       printf("\nBlacklisted URL violation detected");
+      // Obtain Source IP Address
       struct in_addr ipaddr;
       ipaddr.s_addr = ip_head->saddr;      
       printf("\nSource IP address: %s", inet_ntoa(ipaddr));      
+      // Obtain Destination IP address
       ipaddr.s_addr = ip_head->daddr;
-      printf("\nDestination IP address: %s\n", inet_ntoa(ipaddr));
+      printf("\nDestination IP address: %s", inet_ntoa(ipaddr));
+      printf("\n========================\n");
       blacklistViolations++;
       googleViolations++;      
       pthread_mutex_unlock(&blacklistLock);
     }
+    // if the payload is facebook address display appropriate messages
     else if (strstr(payload, "Host: www.facebook.com"))
     {      
       pthread_mutex_lock(&blacklistLock);
+      printf("\n========================");
       printf("\nBlacklisted URL violation detected");
+      // Obtain Source IP Address
       struct in_addr ipaddr;
       ipaddr.s_addr = ip_head->saddr;      
       printf("\nSource IP address: %s", inet_ntoa(ipaddr));
+      // Obtain Destination IP address
       ipaddr.s_addr = ip_head->daddr;
-      printf("\nDestination IP address: %s\n", inet_ntoa(ipaddr));
+      printf("\nDestination IP address: %s", inet_ntoa(ipaddr));
+      printf("\n========================\n");
       blacklistViolations++;
       facebookViolations++;
       pthread_mutex_unlock(&blacklistLock);
@@ -67,32 +82,32 @@ void blacklistedURLs(const struct tcphdr *tcp_head, const char *payload, const s
   }
 }
 
-
-void detectionReport(int signo){
-  if (signo == SIGINT){         
+// Display the malicious attacks 
+void detectionReport(){
+    // Find the number of distinct number of ip address in the SYN attack  
     int j;
     for (int i = 0; i < count; i++){
       for (j = 0; j < i; j++){
         if (arr[i] == arr[j]){
-          break; // duplicate found        
+          break; // Duplicate found        
         }
       }
       if (i == j){
-        numDistinct++; // increment disctinct
+        numDistinct++; // Increment disctinct number
       }
-    }
+    }  
+    // Free the array
+    free(arr);        
 
+    // Print the attacks
     printf("\nIntrusion Detection Report: ");
     printf("\n%d SYN packets detected from %d different IPs (syn attack)", synCounter, numDistinct);
     printf("\n%d ARP responses (cache poisoning)", arpCounter);
     printf("\n%d URL Blacklist violations (%d google and %d facebook)\n", blacklistViolations, googleViolations, facebookViolations);  
     pthread_mutex_destroy(&arpLock);
     pthread_mutex_destroy(&synLock);
-    pthread_mutex_destroy(&blacklistLock);    
-    exit(0); // stops infiinte run of program 
-  }
-
-
+    pthread_mutex_destroy(&blacklistLock);       
+    exit(0); // stops infinte run of program   
 }
 
 void analyse(struct pcap_pkthdr *header, const unsigned char *packet, int verbose) {  
@@ -106,18 +121,24 @@ void analyse(struct pcap_pkthdr *header, const unsigned char *packet, int verbos
   u_int size_tcp = (tcp->doff*4);  
   payload = (char*)(packet + ETH_HLEN + size_ip + size_tcp);
 
+  // If packet type is IP
   if (ntohs(ethernet->ether_type) == ETHERTYPE_IP){
+    // Check for SYN Flood Attacks and Blacklisted URLs
     synFloodAttack(ip, tcp);
     blacklistedURLs(tcp, payload, ip);
+    // free(tcp);
+    // free(ethernet);
+    // free(ip);    
   }
+  // If packet type is ARP 
   else if (ntohs(ethernet->ether_type) == ETHERTYPE_ARP){
+    // Construct arp packet
     const struct ether_arp *arp = (struct ether_arp *)(ip);   
+    // Test for ARP poisoning attack
     if (ntohs(arp->arp_op) == ARPOP_REPLY){
       pthread_mutex_lock(&arpLock);
-      arpCounter++;
+      arpCounter++;      
       pthread_mutex_unlock(&arpLock);
-    }       
+    }        
   }   
-
-  signal(SIGINT, detectionReport);     
 }

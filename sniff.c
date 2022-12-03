@@ -4,67 +4,77 @@
 #include <stdlib.h>
 #include <pcap.h>
 #include <netinet/if_ether.h>
+#include <signal.h>
 
 #include "dispatch.h"
 
-
-void callback(unsigned char *args, const struct pcap_pkthdr *header, const unsigned char *packet){
-  // Dispatch packet for processing
-  int verbose = (int) *args;
-  if (verbose){
-    dump(packet, header->len);
-  }  
-  dispatch((struct pcap_pkthdr *)header, packet, verbose);
-  
-}
+pcap_t *pcap_handle;
+int verbose;
 
 // Application main sniffing loop
 void sniff(char *interface, int verbose) {
-  
+  verbose = verbose;
   char errbuf[PCAP_ERRBUF_SIZE];
 
   // Open the specified network interface for packet capture. pcap_open_live() returns the handle to be used for the packet
   // capturing session. check the man page of pcap_open_live()
-  pcap_t *pcap_handle = pcap_open_live(interface, 4096, 1, 1000, errbuf);
+  pcap_handle = pcap_open_live(interface, 4096, 1, 1000, errbuf);
+
+  // Call the signalDetecor method, if not possible return error message
+  if (signal(SIGINT, signalDetector) == SIG_ERR){
+    printf("\nCan't catch SIGINT\n");
+		exit(0);
+	}
+
   if (pcap_handle == NULL) {
     fprintf(stderr, "Unable to open interface %s\n", errbuf);
     exit(EXIT_FAILURE);
   } else {
     printf("SUCCESS! Opened %s for capture\n", interface);
   }  
+   
+  // first we initialise the threads
+  createThreads();
+  // Then call the efficient method pcap_loop to capture the packets
+  pcap_loop(pcap_handle, -1, callback, (u_char *) &verbose);  
 
-   // negative = sniff till error
-  // first arg = pcap handle
-  // third = call back function 
-  // 4 = verbose decides the dispatch process so this is the argument we want to pass in
-  pcap_loop(pcap_handle, -1, callback, (u_char *) &verbose);
+}
 
-  // struct pcap_pkthdr header;
-  // const unsigned char *packet;
+// Deals with every new packet recieved
+void callback(unsigned char *args, const struct pcap_pkthdr *header, const unsigned char *packet){  
+  int verbose = (int) *args;
+  // if in verbose call dump
+  if (verbose){
+    dump(packet, header->len);
+  }    
+  // Dispatch packet for processing
+  dispatch((struct pcap_pkthdr *)header, packet, verbose);    
+}
 
-  // Capture packet one packet everytime the loop runs using pcap_next(). This is inefficient.
-  // A more efficient way to capture packets is to use use pcap_loop() instead of pcap_next().
-  // See the man pages of both pcap_loop() and pcap_next().
-
-
-
-  // while (1) {
-  //   // Capture a  packet
-  //   packet = pcap_next(pcap_handle, &header);
-  //   if (packet == NULL) {
-  //     // pcap_next can return null if no packet is seen within a timeout
-  //     if (verbose) {
-  //       printf("No packet received. %s\n", pcap_geterr(pcap_handle));
-  //     }
-  //   } else {
-  //     // If verbose is set to 1, dump raw packet to terminal
-  //     if (verbose) {
-  //       dump(packet, header.len);
-  //     }
-  //     // Dispatch packet for processing
-  //     dispatch(&header, packet, verbose);
-  //   }
-  // }
+// Used to join threads and return a report for any errors found once ^C is inputted
+void signalDetector(int sig){  
+  if (sig == SIGINT){
+    // Stop sniffing for packets
+    pcap_breakloop(pcap_handle);   
+    // if in verbose join the threads    
+    printf("JOIN EM");
+    joinThreads();
+    if (verbose){
+      printf("CLOSSE");
+    }
+    // if pcap_handle has been declared, close it
+    detectionReport(); 
+    if (pcap_handle){
+      pcap_close(pcap_handle); 
+    } 
+    // Call the detection report - errors detected report
+    //detectionReport(); 
+    // Destroy queue and all packets in it  
+    destroyQueue();  
+    //Close the process
+    exit(0);
+  }
+  
 }
 
 // Utility/Debugging method for dumping raw packet data
