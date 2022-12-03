@@ -33,7 +33,7 @@ void dispatch(struct pcap_pkthdr *header, const unsigned char *packet, int verbo
 }
 
 // Function to be executed by each worker thread
-void *thread_code(void *arg) { 
+void *thread_code(void *arg) {   
   // Continue checking if work to be done   
   while (run == 1){
     // acquire lock, get connection socket descriptor from work queue, release lock
@@ -43,12 +43,12 @@ void *thread_code(void *arg) {
 			pthread_cond_wait(&cond,&lock);
 		} 
     if (run == 1){
-      // Initialise thread
+      // Initialise thread      
       struct thread_args *thread = NULL;//malloc(sizeof(struct thread_args));
       // Set it to the head value of the worker queue
       thread = work_queue->head->item;
       // Dequeue this item from the queue
-      dequeue(work_queue);
+      dequeue(work_queue);            
       pthread_mutex_unlock(&lock);    
       // Send this item to the analyse method
       analyse(thread->header, thread->packet, thread->verbose);  
@@ -60,7 +60,6 @@ void *thread_code(void *arg) {
     }
     
   }    
-  
   return NULL;
 }
 
@@ -73,7 +72,7 @@ void createThreads(){
   for(i=0;i<NUMTHREADS;i++){
 		if (pthread_create(&tid[i],NULL,&thread_code,(void *) NULL) != 0){
       printf("Failed to create thread");
-    } 
+    }        
 	}
 }
 
@@ -90,13 +89,12 @@ void joinThreads(){
       pthread_join(tid[i],NULL);    
     }            
   }    
-}
-
-// Stop the possible memory leaks
-void destroyQueue(){
+  
   // Done with queue so delete it
   destroy_queue(work_queue);
   // Done with lock and cond so destroy them
   pthread_mutex_destroy(&lock);
   pthread_cond_destroy(&cond);
 }
+
+

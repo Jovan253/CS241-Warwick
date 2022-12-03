@@ -11,10 +11,18 @@ struct queue *create_queue(void){ //creates a queue and returns its pointer
   return(q);  
 }
 
-void destroy_queue(struct queue *q){  //destroys the queue and frees the memory
-  while(!isempty(q)){
-    dequeue(q);
-  }
+void destroy_queue(struct queue *q){  //destroys the queue and frees the memory   
+  while(q->head != NULL){
+    struct node *temp = q->head;
+    if (temp){
+      q->head = temp->next;
+      free((void *)temp->item);
+      free(temp);
+    }
+    else{
+      break;
+    }
+  }  
   free(q);
 }
 
@@ -37,35 +45,37 @@ void enqueue(struct queue *q, struct thread_args *threads){ //enqueues a node wi
 }
 
 void dequeue(struct queue *q){ //dequeues a the head node
-  struct node *head_node;
+  struct node *head_node;  
+  struct thread_args *item_head;
   if(isempty(q)){
-    printf("Error: attempt to dequeue from an empty queue");
+    printf("Error: attempt to dequeue from an empty queue");    
   }
   else{
-    head_node=q->head;
-    q->head=q->head->next;
+    head_node=q->head;  
+    item_head = head_node->item;  
+    q->head=q->head->next;    
     if(q->head==NULL)
       q->tail=NULL;
-    free(head_node);
+    free(head_node);     
   }
 }
 
-void printqueue(struct queue *q){
-    if(isempty(q)){
-        printf("The queue is empty\n");
-    }
-    else{
-        struct node *read_head;
-        read_head=q->head;
-        printf("The queue elements from head to tail are:\n");
-        printf("%d",read_head->item);
-        while(read_head->next!=NULL){
-            read_head=read_head->next;
-            printf("--> %d",read_head->item);
-        }
-        printf("\n");
-    }
-}
+// void printqueue(struct queue *q){
+//     if(isempty(q)){
+//         printf("The queue is empty\n");
+//     }
+//     else{
+//         struct node *read_head;
+//         read_head=q->head;
+//         printf("The queue elements from head to tail are:\n");
+//         printf("%d",read_head->item);
+//         while(read_head->next!=NULL){
+//             read_head=read_head->next;
+//             printf("--> %d",read_head->item);
+//         }
+//         printf("\n");
+//     }
+// }
 
 // int main(){
 //     struct queue *work_queue;

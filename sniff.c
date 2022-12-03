@@ -56,21 +56,16 @@ void signalDetector(int sig){
   if (sig == SIGINT){
     // Stop sniffing for packets
     pcap_breakloop(pcap_handle);   
-    // if in verbose join the threads    
-    printf("JOIN EM");
-    joinThreads();
-    if (verbose){
-      printf("CLOSSE");
-    }
-    // if pcap_handle has been declared, close it
-    detectionReport(); 
+    // Join the threads        
+    joinThreads();    
+    // if pcap_handle has been declared, close it    
     if (pcap_handle){
       pcap_close(pcap_handle); 
     } 
     // Call the detection report - errors detected report
-    //detectionReport(); 
+    detectionReport(); 
     // Destroy queue and all packets in it  
-    destroyQueue();  
+    //destroyQueue();  
     //Close the process
     exit(0);
   }
